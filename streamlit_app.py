@@ -3,7 +3,6 @@ import pdf2image
 import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageDraw
 import google.generativeai as genai
-import io
 import time
 
 # --- ページ設定 ---
@@ -18,7 +17,7 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     st.sidebar.warning("APIキーが設定されていません。")
 
-# --- 解析アルゴリズム ---
+# --- 解析アルゴリズム（ナレッジ） ---
 ANALYSIS_ENGINE = {
     "付属品検査成績書": [
         "【物理的差異】No.3 燃料仕切弁：型式が 25A から 30A に書き換わっています。",
@@ -62,26 +61,29 @@ if st.sidebar.button("🚀 検査実行"):
                     img_orig = img_orig_list[0].convert("RGB")
                     img_test = img_test_list[0].convert("RGB").resize(img_orig.size)
                     
-                    # 差分抽出
+                    # 1. 物理差分生成 (黒い画面用)
                     diff = ImageChops.difference(img_orig, img_test)
-                    diff_gray = diff.convert("L")
-                    # 変化がある程度大きい箇所をマスク化
-                    mask = diff_gray.point(lambda x: 255 if x > 30 else 0)
+                    diff_display = ImageEnhance.Contrast(diff).enhance(15.0) # 演出用にコントラスト強調
                     
-                    # 比較用画像に赤枠を描画
+                    # 2. 赤枠生成ロジック (ノイズ除去強化)
+                    diff_gray = diff.convert("L")
+                    # しきい値を高く設定(50)し、微細なズレをカット
+                    mask = diff_gray.point(lambda x: 255 if x > 50 else 0)
+                    
                     res_img = img_test.copy()
                     draw = ImageDraw.Draw(res_img)
                     
-                    # 差分エリアをバウンディングボックスとして取得（50x50のグリッドで判定）
-                    grid_size = 50
+                    # グリッド判定
+                    grid_size = 40
                     for y in range(0, res_img.height, grid_size):
                         for x in range(0, res_img.width, grid_size):
                             box = (x, y, x + grid_size, y + grid_size)
                             region = mask.crop(box)
-                            if np.any(np.array(region) > 0):
-                                draw.rectangle(box, outline="red", width=3)
+                            # 領域内の「変化しているピクセル」が一定数以上の時だけ枠を描く
+                            if np.sum(np.array(region) > 0) > 20: 
+                                draw.rectangle(box, outline="red", width=4)
                     
-                    time.sleep(1.0)
+                    time.sleep(1.2) # 演出
                     
                     st.divider()
                     st.subheader(f"🔍 検査結果レポート: {test_type}")
@@ -89,13 +91,17 @@ if st.sidebar.button("🚀 検査実行"):
                         if "🚨" in info: st.error(info)
                         else: st.warning(info)
                     
-                    col1, col2 = st.columns(2)
+                    # 3枚並列表示
+                    col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.image(img_orig, caption="原本 (Master)")
+                        st.image(img_orig, caption="① 原本 (Master)")
                     with col2:
-                        st.image(res_img, caption="検図対象 (相違箇所を赤枠で強調表示)")
+                        # 黒い画面を表示
+                        st.image(diff_display, caption="② 物理差分スキャン (インク抽出)")
+                    with col3:
+                        st.image(res_img, caption="③ 検図判定 (相違箇所を強調)")
                     
-                    st.success("✅ 解析を完了しました。赤枠箇所を重点的に確認してください。")
+                    st.success("✅ 全プロセスの解析を完了しました。")
 
             except Exception as e:
                 st.error(f"解析エラー: {e}")
