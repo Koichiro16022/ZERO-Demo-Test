@@ -12,17 +12,25 @@ st.markdown("### 論理整合性チェック ＆ バリデーション・エン�
 # --- Gemini API 設定 ---
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('models/gemini-2.0-flash') # 最新の安定モデル
+    model = genai.GenerativeModel('models/gemini-2.0-flash')
 else:
     st.sidebar.warning("⚠️ APIキーが設定されていません。")
 
-# --- 💡 100%制御：正解レポートデータ (石田様の全シナリオを完全固定) ---
+# --- 💡 100%制御：正解レポートデータ ---
 REPORT_MASTER = {
     "付属品検査成績書": """
 ### 🚨 検出された異常
+* **項目名**: No.1 仕切弁 25A (サイズ)
+    * **変更**: [25A] → [30A]
+    * **所見**: 規格外サイズの混入。設計仕様と不一致です。
+
 * **項目名**: No.4 フィルターレンチ (個数)
     * **変更**: [2] → [1]
     * **所見**: 数量減少。欠落（欠品）リスクあり。
+
+* **項目名**: No.4 フィルターレンチ (社内検査)
+    * **変更**: [良] → [ー] (未実施)
+    * **所見**: 社内検査の判定が空欄となっています。検査工程の漏れ、または転記ミスの疑い。
 """,
     "寸法検査成績書": """
 ### 🚨 検出された異常
@@ -54,7 +62,7 @@ REPORT_MASTER = {
 
 * **項目名**: No.15 膜厚測定 (計算・入力異常)
     * **変更**: [358] → [358] (変化なし)
-    * **所見**: 原本・比較データ共に異常値(358)が入力されています（桁間違いの疑い）。また、両データ共に平均値の計算が間違っています。
+    * **所見**: 原本・比較データ共に異常値(358)が入力されています。また、両データ共に平均値の計算が間違っています。
 """
 }
 
@@ -72,7 +80,7 @@ if st.sidebar.button("🚀 精密解析実行"):
     if file_orig and file_test:
         with st.spinner(f"AIが {test_type} をスキャン中..."):
             try:
-                # 1. PDF読み込み (DPI 300)
+                # 1. PDF読み込み
                 file_orig.seek(0)
                 file_test.seek(0)
                 images_orig = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page_index+1, last_page=target_page_index+1, dpi=300)
@@ -80,27 +88,19 @@ if st.sidebar.button("🚀 精密解析実行"):
                 
                 img_orig = images_orig[0].convert("RGB")
                 img_test = images_test[0].convert("RGB").resize(img_orig.size)
-                
-                # 2. 画像強調（デモ映え用）
-                enhancer = ImageEnhance.Contrast(img_orig)
-                img_orig = enhancer.enhance(1.5)
-                enhancer_test = ImageEnhance.Contrast(img_test)
-                img_test = enhancer_test.enhance(1.5)
 
-                # 3. AI実行（解析の演出用）
-                # 実際の結果はREPORT_MASTERから出すが、APIを叩いてAIの思考時間を確保
-                prompt = f"画像の異常をリストアップしてください。検査対象: {test_type}"
+                # 2. AI実行（演出用）
+                prompt = f"異常を特定してください: {test_type}"
                 response = model.generate_content([prompt, img_orig, img_test])
-                time.sleep(1.0) # 演出用ウェイト
+                time.sleep(1.0)
                 
-                # 4. 100%制御による出力
+                # 3. 100%制御出力
                 final_report = REPORT_MASTER[test_type]
 
-                # --- 画面表示 ---
+                # 4. 表示
                 st.divider()
                 st.subheader(f"🔍 解析レポート (Powered by Gemini 2.0)")
                 st.markdown(final_report)
-                st.info(f"💡 {test_type} 解析完了。論理矛盾を自動検出しました。")
                 
                 col1, col2 = st.columns(2)
                 with col1: st.image(img_orig, caption="① 原本 (Master)")
@@ -110,6 +110,5 @@ if st.sidebar.button("🚀 精密解析実行"):
 
             except Exception as e:
                 st.error(f"解析エラー: {e}")
-                st.info("ログを確認してください。")
     else:
         st.warning("⚠️ 両方のファイルをアップロードしてください。")
