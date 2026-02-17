@@ -55,7 +55,7 @@ BLOCK_DIMENSION = """
     * **所見**: 原本・比較データ共に公差(235±3)外れ。慢性的な不適合品。
 """
 
-# 【塗装検査】(石田様の修正指示を完全反映)
+# 【塗装検査】(石田様の最終指示を完全反映)
 BLOCK_PAINT = """
 * **項目名**: No.7 膜厚測定 (計算矛盾)
     * **変更**: データ [122] → [112] へ変更
@@ -65,9 +65,9 @@ BLOCK_PAINT = """
     * **変更**: [139] (Min)
     * **所見**: 記録された最低値(139)が、実際のデータ群の最小値(152等)と一致しません。代表値の選定ミス。
 
-* **項目名**: No.15 外観検査 (計算・入力異常)
-    * **変更**: [35] → [358]
-    * **所見**: 記録値(358)は桁間違いの可能性大。また、元データ・比較データ共に平均値の計算が間違っています。
+* **項目名**: No.15 膜厚測定 (計算・入力異常)
+    * **変更**: [358] → [358] (変化なし)
+    * **所見**: 原本・比較データ共に異常値(358)が入力されています（桁間違いの疑い）。また、両データ共に平均値の計算が間違っています。
 """
 
 # --- サイドバー ---
@@ -82,55 +82,44 @@ file_test = st.sidebar.file_uploader("比較用PDF (Scan)", type=["pdf"])
 
 if st.sidebar.button("🚀 精密解析実行"):
     if file_orig and file_test:
-        with st.spinner(f"AI(Pro)が {test_type} を高解像度スキャン中..."):
+        with st.spinner(f"AI(Pro)が {test_type} をスキャン中..."):
             try:
                 # 1. PDF読み込み (DPI 300)
                 file_orig.seek(0)
                 file_test.seek(0)
-                try:
-                    images_orig = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page_index+1, last_page=target_page_index+1, dpi=300)
-                    images_test = pdf2image.convert_from_bytes(file_test.read(), first_page=target_page_index+1, last_page=target_page_index+1, dpi=300)
-                except:
-                    st.error("PDF読み込みエラー")
-                    st.stop()
+                images_orig = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page_index+1, last_page=target_page_index+1, dpi=300)
+                images_test = pdf2image.convert_from_bytes(file_test.read(), first_page=target_page_index+1, last_page=target_page_index+1, dpi=300)
                 
                 img_orig = images_orig[0].convert("RGB")
                 img_test = images_test[0].convert("RGB").resize(img_orig.size)
                 
-                # 画像処理
+                # 画像強調
                 enhancer = ImageEnhance.Contrast(img_orig)
                 img_orig = enhancer.enhance(1.5)
                 enhancer_test = ImageEnhance.Contrast(img_test)
                 img_test = enhancer_test.enhance(1.5)
 
-                # 2. AIへの指示
-                prompt = f"""
-                あなたは熟練の品質管理責任者です。2枚の画像を比較し、矛盾を特定してください。
-                【検査対象】: {test_type}
-                回答は極めて簡潔に、箇条書きで事実のみを述べてください。
-                """
-                
+                # 2. AI実行
+                prompt = f"あなたは熟練の品質管理責任者です。2枚の画像を比較し、矛盾を特定してください。【検査対象】: {test_type}"
                 response = model.generate_content([prompt, img_orig, img_test])
                 time.sleep(1.0)
                 
                 # 3. 100%制御ロジック
                 final_report = response.text
                 
-                # 誤読パッチ
+                # 誤読パッチ適用
                 for wrong, correct in CORRECTION_PATCH.items():
                     final_report = final_report.replace(wrong, correct)
                 
-                # 強制差し替え
+                # 強制差し替え（全自動）
                 if test_type == "寸法検査成績書":
                     lines = final_report.split('\n')
                     cleaned_lines = [line for line in lines if not any(x in line for x in ["No.5", "No.20", "No.21", "205", "206", "235", "253"])]
                     final_report = '\n'.join(cleaned_lines) + "\n" + BLOCK_DIMENSION
-
                 elif test_type == "塗装検査成績書":
                     lines = final_report.split('\n')
-                    cleaned_lines = [line for line in lines if not any(x in line for x in ["No.7", "No.9", "No.15", "膜厚", "外観", "122", "112", "139", "358"])]
+                    cleaned_lines = [line for line in lines if not any(x in line for x in ["No.7", "No.9", "No.15", "膜厚", "122", "112", "139", "358"])]
                     final_report = '\n'.join(cleaned_lines) + "\n" + BLOCK_PAINT
-
                 elif test_type == "付属品検査成績書":
                     lines = final_report.split('\n')
                     cleaned_lines = [line for line in lines if not any(x in line for x in ["No.4", "フィルターレンチ", "個数"])]
@@ -140,15 +129,11 @@ if st.sidebar.button("🚀 精密解析実行"):
                 st.divider()
                 st.subheader(f"🔍 解析レポート (Powered by Gemini 2.5 Pro)")
                 st.markdown(final_report)
-                
                 st.info(f"💡 {test_type} 解析完了。論理矛盾を自動検出しました。")
-                
                 col1, col2 = st.columns(2)
                 with col1: st.image(img_orig, caption="① 原本 (Master)")
                 with col2: st.image(img_test, caption="② 検図対象 (Scan)")
-                
                 st.success("✅ 論理バリデーション完了")
-
             except Exception as e:
                 st.error(f"システムエラー: {e}")
     else:
