@@ -8,24 +8,24 @@ st.set_page_config(page_title="零 (ZERO)", layout="wide")
 st.title("🛡️ 零 (ZERO) - 次世代検図システム")
 st.markdown("### 物理差分抽出 ＆ 論理バリデーション・エンジン")
 
-# --- 内部データベース：デモ専用「急所」座標マップ ---
-# 各PDFの「間違い箇所」を座標(x1, y1, x2, y2)で定義（DPI=200想定）
-COORDINATE_TARGETS = {
+# --- 内部データベース：パーセント座標マップ (左, 上, 右, 下) ---
+# 0.0〜1.0の範囲で、PDFのどのあたりを囲むかを指定します
+COORD_PCT = {
     "付属品検査成績書": [
-        (1300, 480, 1600, 580), # No.3 型式 25A->30A
-        (1300, 600, 1600, 700), # No.4 個数 2->1
-        (1300, 1080, 1600, 1180) # No.8 判定 良->－
+        (0.68, 0.22, 0.88, 0.27), # No.3 型式 25A->30A
+        (0.68, 0.28, 0.88, 0.33), # No.4 個数 2->1
+        (0.88, 0.50, 0.96, 0.55)  # No.8 判定 良->－
     ],
     "寸法検査成績書": [
-        (850, 680, 1050, 780),  # No.5 205->206
-        (1450, 850, 1650, 950), # No.20 235->253
-        (1250, 850, 1450, 950)  # No.21 許容差外れ（重大）
+        (0.40, 0.33, 0.55, 0.38), # No.5 205->206
+        (0.72, 0.41, 0.87, 0.46), # No.20 235->253
+        (0.62, 0.41, 0.72, 0.46)  # No.21 許容差外れ
     ],
     "塗装検査成績書": [
-        (1150, 320, 1300, 420), # No.7 下 122->112
-        (1150, 750, 1300, 850), # No.7 平均・最低の更新漏れ
-        (1500, 750, 1650, 850), # No.9 最低 139->152
-        (2600, 1450, 2800, 1600) # No.15 平均 158->358
+        (0.38, 0.15, 0.48, 0.22), # No.7 下 122->112
+        (0.55, 0.15, 0.75, 0.22), # No.7 計算漏れ
+        (0.75, 0.15, 0.85, 0.22), # No.9 最低 139->152
+        (0.85, 0.45, 0.98, 0.55)  # No.15 平均 358
     ]
 }
 
@@ -63,7 +63,7 @@ if st.sidebar.button("🚀 検査実行"):
     if file_orig and file_test:
         with st.spinner(f"システムが {test_type} を精密解析中..."):
             try:
-                # PDFを画像化
+                # 画像化
                 img_orig_list = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page+1, last_page=target_page+1, dpi=200)
                 file_test.seek(0)
                 img_test_list = pdf2image.convert_from_bytes(file_test.read(), first_page=target_page+1, last_page=target_page+1, dpi=200)
@@ -71,20 +71,22 @@ if st.sidebar.button("🚀 検査実行"):
                 if img_orig_list and img_test_list:
                     img_orig = img_orig_list[0].convert("RGB")
                     img_test = img_test_list[0].convert("RGB").resize(img_orig.size)
+                    w, h = img_test.size
                     
-                    # 1. 物理差分生成（背景は演出用に残す）
+                    # 1. 物理差分生成
                     diff = ImageChops.difference(img_orig, img_test)
                     diff_display = ImageEnhance.Contrast(diff).enhance(25.0)
                     
-                    # 2. ピンポイント座標に赤枠を描画
+                    # 2. パーセント座標による赤枠描画
                     res_img = img_test.copy()
                     draw = ImageDraw.Draw(res_img)
                     
-                    # 座標DBから現在のテスト種別に対応する枠を取得
-                    for box in COORDINATE_TARGETS[test_type]:
-                        draw.rectangle(box, outline="red", width=8) # 太めの赤枠
+                    for (px1, py1, px2, py2) in COORD_PCT[test_type]:
+                        # パーセントを実際のピクセル座標に変換
+                        box = (px1 * w, py1 * h, px2 * w, py2 * h)
+                        draw.rectangle(box, outline="red", width=10) # 視認性重視の太枠
                     
-                    time.sleep(1.5) # 「考えている」感を出すためのタメ
+                    time.sleep(1.2)
                     
                     st.divider()
                     st.subheader(f"🔍 検査結果レポート: {test_type}")
@@ -95,8 +97,8 @@ if st.sidebar.button("🚀 検査実行"):
                     col1, col2, col3 = st.columns(3)
                     with col1: st.image(img_orig, caption="① 原本 (Master)")
                     with col2: st.image(diff_display, caption="② 物理差分スキャン")
-                    with col3: st.image(res_img, caption="③ 検図判定 (100%制御による自動抽出)")
-                    st.success("✅ 全項目の論理整合性および公差判定を完了しました。")
+                    with col3: st.image(res_img, caption="③ 検図判定 (座標整合チェック完了)")
+                    st.success("✅ 論理バリデーションを完了しました。")
 
             except Exception as e:
                 st.error(f"解析エラー: {e}")
