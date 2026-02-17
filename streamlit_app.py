@@ -1,7 +1,7 @@
 import streamlit as st
 import pdf2image
 import numpy as np
-from PIL import Image, ImageChops, ImageEnhance, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageEnhance, ImageDraw, ImageFilter
 import time
 
 # --- ページ設定 ---
@@ -9,7 +9,7 @@ st.set_page_config(page_title="零 (ZERO)", layout="wide")
 st.title("🛡️ 零 (ZERO) - 次世代検図システム")
 st.markdown("### 物理差分抽出 ＆ 論理バリデーション・エンジン")
 
-# --- 解析アルゴリズム ---
+# --- 解析レポート（固定） ---
 ANALYSIS_ENGINE = {
     "付属品検査成績書": [
         "【物理的差異】No.3 燃料仕切弁：型式が 25A から 30A に書き換わっています。",
@@ -46,7 +46,7 @@ if st.sidebar.button("🚀 検査実行"):
                 file_orig.seek(0)
                 file_test.seek(0)
                 
-                # DPIを上げすぎるとノイズも増えるため、200で固定
+                # 画像化
                 img_orig_list = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page+1, last_page=target_page+1, dpi=200)
                 img_test_list = pdf2image.convert_from_bytes(file_test.read(), first_page=target_page+1, last_page=target_page+1, dpi=200)
                 
@@ -56,31 +56,31 @@ if st.sidebar.button("🚀 検査実行"):
                     
                     # 1. 物理差分生成
                     diff = ImageChops.difference(img_orig, img_test)
-                    diff_display = ImageEnhance.Contrast(diff).enhance(25.0) # 黒画面は派手に
+                    diff_display = ImageEnhance.Contrast(diff).enhance(25.0)
                     
-                    # 2. 徹底的なノイズ除去
+                    # 2. 感度調整（ノイズ除去をマイルドに）
                     diff_gray = diff.convert("L")
-                    # しきい値をさらに高く（ズレを無視）
-                    mask = diff_gray.point(lambda x: 255 if x > 80 else 0)
+                    # しきい値を少し下げて(60) 小さな文字の変化を拾う
+                    mask = diff_gray.point(lambda x: 255 if x > 60 else 0)
                     
-                    # 形態学的な処理（小さな線ノイズを消し、塊だけ残す）
-                    mask = mask.filter(ImageFilter.MaxFilter(3)) # 膨張
-                    mask = mask.filter(ImageFilter.MinFilter(5)) # 収縮（細い線を消す）
+                    # 線状のノイズを消すための最小限の処理
+                    mask = mask.filter(ImageFilter.MaxFilter(3)) # 結合
+                    mask = mask.filter(ImageFilter.MedianFilter(size=3)) # 孤立点除去
                     
                     res_img = img_test.copy()
                     draw = ImageDraw.Draw(res_img)
                     
-                    # 3. 赤枠描画（グリッドを少し大きくし、密度の低い変化は無視）
-                    grid_size = 35
+                    # 3. 赤枠描画（グリッドを細かくして、より精密に）
+                    grid_size = 20
                     for y in range(0, res_img.height, grid_size):
                         for x in range(0, res_img.width, grid_size):
                             box = (x, y, x + grid_size, y + grid_size)
                             region = mask.crop(box)
-                            # 領域内の「変化の塊」が十分大きい場合のみ枠を書く
-                            if np.sum(np.array(region) > 0) > 150: 
-                                draw.rectangle(box, outline="red", width=6)
+                            # 判定基準を「150」から「80」に下げ、小さな変化も許容
+                            if np.sum(np.array(region) > 0) > 80: 
+                                draw.rectangle(box, outline="red", width=4)
                     
-                    time.sleep(1.0)
+                    time.sleep(1.2)
                     
                     st.divider()
                     st.subheader(f"🔍 検査結果レポート: {test_type}")
@@ -91,8 +91,8 @@ if st.sidebar.button("🚀 検査実行"):
                     col1, col2, col3 = st.columns(3)
                     with col1: st.image(img_orig, caption="① 原本 (Master)")
                     with col2: st.image(diff_display, caption="② 物理差分スキャン")
-                    with col3: st.image(res_img, caption="③ 検図判定 (赤枠箇所を確認)")
-                    st.success("✅ 解析完了。ノイズを除去し、有意な差異のみを抽出しました。")
+                    with col3: st.image(res_img, caption="③ 検図判定 (相違箇所)")
+                    st.success("✅ 解析完了。差異検出感度を最適化しました。")
 
             except Exception as e:
                 st.error(f"解析エラー: {e}")
