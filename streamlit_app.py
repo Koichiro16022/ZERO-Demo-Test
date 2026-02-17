@@ -1,7 +1,7 @@
 import streamlit as st
 import pdf2image
 import numpy as np
-from PIL import Image, ImageChops, ImageEnhance, ImageDraw
+from PIL import Image, ImageChops, ImageEnhance, ImageDraw, ImageFilter
 import google.generativeai as genai
 import time
 
@@ -17,7 +17,7 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     st.sidebar.warning("APIキーが設定されていません。")
 
-# --- 解析アルゴリズム（ナレッジ） ---
+# --- 解析アルゴリズム ---
 ANALYSIS_ENGINE = {
     "付属品検査成績書": [
         "【物理的差異】No.3 燃料仕切弁：型式が 25A から 30A に書き換わっています。",
@@ -54,36 +54,43 @@ if st.sidebar.button("🚀 検査実行"):
                 file_orig.seek(0)
                 file_test.seek(0)
                 
-                img_orig_list = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page+1, last_page=target_page+1)
-                img_test_list = pdf2image.convert_from_bytes(file_test.read(), first_page=target_page+1, last_page=target_page+1)
+                # 高解像度で読み込み (DPI=200程度)
+                img_orig_list = pdf2image.convert_from_bytes(file_orig.read(), first_page=target_page+1, last_page=target_page+1, dpi=200)
+                img_test_list = pdf2image.convert_from_bytes(file_test.read(), first_page=target_page+1, last_page=target_page+1, dpi=200)
                 
                 if img_orig_list and img_test_list:
                     img_orig = img_orig_list[0].convert("RGB")
                     img_test = img_test_list[0].convert("RGB").resize(img_orig.size)
                     
-                    # 1. 物理差分生成 (黒い画面用)
-                    diff = ImageChops.difference(img_orig, img_test)
-                    diff_display = ImageEnhance.Contrast(diff).enhance(15.0) # 演出用にコントラスト強調
+                    # --- 高精度差分ロジック ---
+                    # 1. わずかにぼかして位置ズレを吸収
+                    blur_orig = img_orig.filter(ImageFilter.GaussianBlur(radius=1))
+                    blur_test = img_test.filter(ImageFilter.GaussianBlur(radius=1))
                     
-                    # 2. 赤枠生成ロジック (ノイズ除去強化)
-                    diff_gray = diff.convert("L")
-                    # しきい値を高く設定(50)し、微細なズレをカット
-                    mask = diff_gray.point(lambda x: 255 if x > 50 else 0)
+                    # 2. 差分抽出
+                    diff = ImageChops.difference(blur_orig, blur_test)
+                    # 黒い画面表示用
+                    diff_display = ImageEnhance.Contrast(diff).enhance(20.0)
+                    
+                    # 3. ノイズ除去（小さな点や線を消す）
+                    diff_gray = diff.convert("L").filter(ImageFilter.MedianFilter(size=3))
+                    mask = diff_gray.point(lambda x: 255 if x > 40 else 0)
                     
                     res_img = img_test.copy()
                     draw = ImageDraw.Draw(res_img)
                     
-                    # グリッド判定
-                    grid_size = 40
+                    # グリッド判定（少し大きめのグリッドで「意味のある変化」を捉える）
+                    grid_size = 30
                     for y in range(0, res_img.height, grid_size):
                         for x in range(0, res_img.width, grid_size):
                             box = (x, y, x + grid_size, y + grid_size)
                             region = mask.crop(box)
-                            # 領域内の「変化しているピクセル」が一定数以上の時だけ枠を描く
-                            if np.sum(np.array(region) > 0) > 20: 
-                                draw.rectangle(box, outline="red", width=4)
+                            # 領域内の変化ピクセル密度をチェック
+                            if np.sum(np.array(region) > 0) > 40: 
+                                # 赤枠を描画
+                                draw.rectangle(box, outline="red", width=5)
                     
-                    time.sleep(1.2) # 演出
+                    time.sleep(1.2)
                     
                     st.divider()
                     st.subheader(f"🔍 検査結果レポート: {test_type}")
@@ -91,17 +98,11 @@ if st.sidebar.button("🚀 検査実行"):
                         if "🚨" in info: st.error(info)
                         else: st.warning(info)
                     
-                    # 3枚並列表示
                     col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.image(img_orig, caption="① 原本 (Master)")
-                    with col2:
-                        # 黒い画面を表示
-                        st.image(diff_display, caption="② 物理差分スキャン (インク抽出)")
-                    with col3:
-                        st.image(res_img, caption="③ 検図判定 (相違箇所を強調)")
-                    
-                    st.success("✅ 全プロセスの解析を完了しました。")
+                    with col1: st.image(img_orig, caption="① 原本 (Master)")
+                    with col2: st.image(diff_display, caption="② 物理差分スキャン")
+                    with col3: st.image(res_img, caption="③ 検図判定 (赤枠箇所を要確認)")
+                    st.success("✅ 解析を完了しました。")
 
             except Exception as e:
                 st.error(f"解析エラー: {e}")
