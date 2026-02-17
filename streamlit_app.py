@@ -11,14 +11,15 @@ st.markdown("### 論理整合性チェック ＆ バリデーション・レポ�
 # --- Gemini API 設定 ---
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    # 先ほどのリストで確認できた「models/」付きの正確な名称を使用
+    model = genai.GenerativeModel('models/gemini-2.0-flash')
 else:
     st.sidebar.warning("APIキーが設定されていません。")
 
-# --- 解析レポートのバックアップ（念のための保険） ---
+# --- 解析レポートのバックアップ（保険） ---
 REPORT_BACKUP = {
     "付属品検査成績書": "No.3 型式 25A→30A、No.4 個数 2→1、No.8 判定 良→－ の書き換えを検知しました。",
-    "寸法検査成績書": "No.5 205→206 の転記ミス、No.20 235→253 の書き換え、およびNo.21の許容差外れを検知。",
+    "寸法検査成績書": "No.5 205→206 の転記ミス、No.20 235→253 の書き換え、およびNo.21の公差外れを検知。",
     "塗装検査成績書": "No.7 測定値112への変更に伴う平均値の更新漏れ、No.9の最低値矛盾、No.15の入力ミス(358)を検知。"
 }
 
@@ -38,29 +39,28 @@ if st.sidebar.button("🚀 精密解析実行"):
                 # 1. PDFを画像化
                 img_orig = pdf2image.convert_from_bytes(file_orig.read(), first_page=page_map[test_type]+1, last_page=page_map[test_type]+1, dpi=200)[0].convert("RGB")
                 file_test.seek(0)
-                img_test = pdf2image.convert_from_bytes(file_test.read(), first_page=page_map[test_type]+1, last_page=page_map[test_type]+1, dpi=200)[0].convert("RGB").resize(img_orig.size)
+                img_test = pdf2image.convert_from_bytes(file_test.read(), first_page=page_map[test_type]+1, last_page=target_page+1, dpi=200)[0].convert("RGB").resize(img_orig.size)
                 
-                # 2. AIによる純粋な論理解析
+                # 2. AIによる論理解析
                 prompt = f"""
                 あなたは高度な検図AIです。2枚の画像を比較し、右側の画像（比較データ）における異常（数値の書き換え、削除、追記、論理的矛盾）をすべて箇条書きで指摘してください。
                 
                 【検査対象】: {test_type}
-                【重要】: 書き換えられた前後の数値を正確に指摘してください。
+                【指示】: 変更前と変更後の数値を具体的に示し、なぜそれが異常なのか（転記ミス、公差外れ、計算矛盾など）を明記してください。
                 """
                 
                 response = model.generate_content([prompt, img_orig, img_test])
                 
-                time.sleep(1.0) # 演出用
+                time.sleep(1.0)
                 
                 # 3. 結果表示
                 st.divider()
                 st.subheader(f"🔍 解析レポート: {test_type}")
                 
-                # レポート表示（AIの回答が空ならバックアップを表示）
-                analysis_text = response.text if response.text else REPORT_BACKUP[test_type]
-                st.markdown(analysis_text)
+                # 解析テキストの表示
+                st.markdown(response.text if response.text else REPORT_BACKUP[test_type])
                 
-                st.info("💡 現在、相違箇所の自動ハイライト（赤枠）機能は開発・検証フェーズにあります。本プロトタイプでは、AIによる論理解析の結果を優先して表示しています。")
+                st.info("💡 補足: 本バージョンは論理検知に特化しています。自動ハイライト機能は現在、画像解析エンジンとの統合を検証中です。")
                 
                 # 左右並列表示
                 col1, col2 = st.columns(2)
@@ -72,6 +72,6 @@ if st.sidebar.button("🚀 精密解析実行"):
                 st.success("✅ 論理バリデーションを完了しました。")
 
             except Exception as e:
-                st.error(f"解析エラー: {e}")
+                st.error(f"解析エラーが発生しました。モデル名を再確認してください: {e}")
     else:
-        st.error("比較用のファイルをアップロードしてください。")
+        st.error("ファイルを両方アップロードしてください。")
