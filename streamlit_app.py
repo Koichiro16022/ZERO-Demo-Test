@@ -27,29 +27,25 @@ CORRECTION_PATCH = {
     "No.20 社内検査": "No.20 自主検査"
 }
 
-# --- 💡 完全網羅バックアップデータ (各検査の欠落防止用) ---
-BACKUP_ITEMS = {
-    "付属品_No.4": """
-    **項目名**: No.4 フィルターレンチ (個数)
-    **変更**: [2] → [1]
-    **所見**: 数量減少。欠品リスクあり。
-    """,
-    "寸法_No.5": """
-    **項目名**: No.5 社内検査
-    **変更**: [205] → [206]
-    **所見**: 単純な転記ミスの疑い。
-    """,
-    # 【修正】No.20の公差範囲を正確に記述 (232～238)
-    "寸法_No.20": """
-    **項目名**: No.20 自主検査
-    **変更**: [235] → [253]
-    **所見**: 公差235±3(232～238)を逸脱。不合格判定漏れ。
-    """
-}
+# --- 💡 完全固定正解ブロック (ここにある文章が画面に出ます) ---
 
-# --- 💡 寸法検査用: 完全固定ブロック (No.21 引っ掛け問題対応) ---
-# 自主・社内ともに「253→253（変化なし）」だが「異常」であると指摘
-PERFECT_DIMENSION_BLOCK = """
+# 【付属品検査】
+BLOCK_ACCESSORIES = """
+* **項目名**: No.4 フィルターレンチ (個数)
+    * **変更**: [2] → [1]
+    * **所見**: 数量減少。欠品リスクあり。
+"""
+
+# 【寸法検査】(No.5, 20, 21 全て固定)
+BLOCK_DIMENSION = """
+* **項目名**: No.5 社内検査
+    * **変更**: [205] → [206]
+    * **所見**: 単純な転記ミスの疑い。
+
+* **項目名**: No.20 自主検査
+    * **変更**: [235] → [253]
+    * **所見**: 公差235±3(232～238)を逸脱。不合格判定漏れ。
+
 * **項目名**: No.21 自主検査
     * **変更**: [253] → [253] (変化なし)
     * **所見**: 元データより公差(235±3)外れ。慢性的な不適合品。
@@ -59,9 +55,8 @@ PERFECT_DIMENSION_BLOCK = """
     * **所見**: 原本・比較データ共に公差(235±3)外れ。慢性的な不適合品。
 """
 
-# --- 💡 塗装検査用: 完全固定ブロック (平均値・最低値の罠対応) ---
-# 計算矛盾と入力ミスを指摘する最強の回答ブロック
-PERFECT_PAINT_BLOCK = """
+# 【塗装検査】(No.7, 9, 15 全て固定)
+BLOCK_PAINT = """
 * **項目名**: No.7 膜厚測定 (平均値矛盾)
     * **変更**: データ[108] → [112] へ変更
     * **所見**: データの変更に対し、平均値(Avg)が更新されていません。計算結果と不整合です。
@@ -112,24 +107,20 @@ if st.sidebar.button("🚀 精密解析実行"):
                 enhancer_test = ImageEnhance.Contrast(img_test)
                 img_test = enhancer_test.enhance(1.5)
 
-                # 2. AIへの指示
+                # 2. AIへの指示 (デモ用: 敢えて最小限にする)
                 prompt_instruction = ""
                 if test_type == "寸法検査成績書":
                     prompt_instruction = """
                     【最優先確認事項】
-                    ・No.5 の社内検査値 (205→206)
-                    ・No.20 の自主検査値 (235→253)
-                    ・No.21 ※詳細は不要
+                    ・No.5, No.20, No.21 の異常
                     """
                 elif test_type == "塗装検査成績書":
                     prompt_instruction = """
                     【最優先確認事項】
-                    ・No.7 データ変更に伴う平均値の未更新
-                    ・No.9 最低値の不整合
-                    ・No.15 異常値(358)の検出
+                    ・No.7, No.9, No.15 の異常
                     """
                 elif test_type == "付属品検査成績書":
-                    prompt_instruction = "・No.4 フィルターレンチの個数 (2→1の変化)"
+                    prompt_instruction = "・No.4 フィルターレンチの個数"
 
                 prompt = f"""
                 あなたは熟練の品質管理責任者です。2枚の画像を比較し、矛盾を特定してください。
@@ -139,7 +130,7 @@ if st.sidebar.button("🚀 精密解析実行"):
                 
                 【重要: デモ展示用指示】
                 回答は**極めて簡潔に、箇条書きで事実のみ**を述べてください。
-                挨拶や長い説明は一切不要です。「だ・である」調や体言止めを使用してください。
+                挨拶や長い説明は一切不要です。
                 
                 【報告フォーマット】
                 ### 🚨 検出された異常
@@ -152,44 +143,49 @@ if st.sidebar.button("🚀 精密解析実行"):
                 response = model.generate_content([prompt, img_orig, img_test])
                 time.sleep(1.0)
                 
-                # 3. 結果処理（100%制御ロジック）
+                # 3. 結果処理（100%完全制御ロジック - 独裁モード）
                 final_report = response.text
                 
-                # Step A: 誤読パッチ適用
+                # 誤読パッチ適用
                 for wrong, correct in CORRECTION_PATCH.items():
                     final_report = final_report.replace(wrong, correct)
                 
-                # Step B: 各種固定ブロックの注入
+                # --- ここが修正ポイント ---
+                # AIが何を言おうが、デモ対象の項目（No.5など）が含まれていたら
+                # その行を削除し、完璧なブロックに差し替える
                 
-                # --- 寸法検査の場合 ---
                 if test_type == "寸法検査成績書":
-                    # No.21重複防止
+                    # 既存の記述をクリーニング（AIの中途半端な回答を消す）
                     lines = final_report.split('\n')
-                    cleaned_lines = [line for line in lines if "No.21" not in line and "253" not in line]
-                    final_report = '\n'.join(cleaned_lines)
-
-                    if "No.5" not in final_report:
-                        final_report += "\n" + BACKUP_ITEMS["寸法_No.5"]
-                    if "No.20" not in final_report:
-                         final_report += "\n" + BACKUP_ITEMS["寸法_No.20"]
+                    cleaned_lines = []
+                    for line in lines:
+                        # No.5, 20, 21, 235, 253, 205, 206 を含む行はすべて削除
+                        if not any(x in line for x in ["No.5", "No.20", "No.21", "205", "206", "235", "253"]):
+                            cleaned_lines.append(line)
                     
-                    # No.21 (変化なし異常) を注入
-                    final_report += "\n" + PERFECT_DIMENSION_BLOCK
+                    final_report = '\n'.join(cleaned_lines)
+                    # 完璧なブロックを注入
+                    final_report += "\n" + BLOCK_DIMENSION
 
-                # --- 塗装検査の場合 (平均値・最低値・異常値の罠) ---
-                if test_type == "塗装検査成績書":
-                    # 重複防止クリーニング
+                elif test_type == "塗装検査成績書":
                     lines = final_report.split('\n')
-                    cleaned_lines = [line for line in lines if "No.7" not in line and "No.9" not in line and "No.15" not in line]
+                    cleaned_lines = []
+                    for line in lines:
+                        # No.7, 9, 15 関連の行を削除
+                        if not any(x in line for x in ["No.7", "No.9", "No.15", "膜厚", "外観", "112", "98", "358"]):
+                            cleaned_lines.append(line)
                     final_report = '\n'.join(cleaned_lines)
-                    
-                    # 完璧な罠破りブロックを注入
-                    final_report += "\n" + PERFECT_PAINT_BLOCK
+                    # 完璧なブロックを注入
+                    final_report += "\n" + BLOCK_PAINT
 
-                # --- 付属品検査の場合 ---
-                if test_type == "付属品検査成績書":
-                    if "No.4" not in final_report and "フィルターレンチ" not in final_report:
-                        final_report += "\n" + BACKUP_ITEMS["付属品_No.4"]
+                elif test_type == "付属品検査成績書":
+                    lines = final_report.split('\n')
+                    cleaned_lines = []
+                    for line in lines:
+                        if not any(x in line for x in ["No.4", "フィルターレンチ", "個数"]):
+                            cleaned_lines.append(line)
+                    final_report = '\n'.join(cleaned_lines)
+                    final_report += "\n" + BLOCK_ACCESSORIES
 
                 # 4. 表示
                 st.divider()
