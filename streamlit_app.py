@@ -288,8 +288,8 @@ def main():
     """メイン実行関数"""
     
     # サイドバー
-    _ = st.sidebar.image("https://via.placeholder.com/200x80/1976d2/ffffff?text=ZERO+System", 
-                     use_column_width=True)
+    st.sidebar.image("https://via.placeholder.com/200x80/1976d2/ffffff?text=ZERO+System", 
+                 width=200)
     st.sidebar.markdown("---")
     st.sidebar.header("📊 データ投入")
     
