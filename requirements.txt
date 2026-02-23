@@ -1,5 +1,5 @@
-streamlit
-pdf2image
-google-generativeai
-Pillow
-pypdf
+streamlit==1.31.0
+pandas==2.1.4
+openpyxl==3.1.5
+numpy==1.26.3
+xlrd==2.0.1
