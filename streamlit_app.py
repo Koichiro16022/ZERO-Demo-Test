@@ -159,7 +159,7 @@ class ZeroValidator:
                     self.log_finding(
                         "寸法", "No.21 (自主検査)", "253", "253",
                         "論理",
-                        "【室長の罠】原本と同じ値だが公差外れ。基準235±3(合格232-238)に対し253。慢性的な不適合。",
+                        "原本と同じ値だが公差外れ。基準235±3(合格232-238)に対し253。",
                         "logic"
                     )
         except:
@@ -175,7 +175,7 @@ class ZeroValidator:
                     self.log_finding(
                         "寸法", "No.21 (社内検査)", "253", "253",
                         "論理",
-                        "【室長の罠】原本と同じ値だが公差外れ。基準235±3(合格232-238)に対し253。",
+                        "原本と同じ値だが公差外れ。基準235±3(合格232-238)に対し253。",
                         "logic"
                     )
         except:
@@ -263,7 +263,7 @@ class ZeroValidator:
                             "塗装", "No.16 (最低値)", 
                             f"{recorded_min_o:.0f}", f"{recorded_min_c:.0f}",
                             "論理",
-                            f"【石田の罠】元・比較データとも最低値を{recorded_min_c:.0f}μmと記載。しかし測定値[{', '.join([f'{m:.0f}' for m in measurements])}]から計算すると正解は{correct_min:.0f}μm。原本から引き継がれた転記ミス。",
+                            f"元・比較データとも最低値を{recorded_min_c:.0f}μmと記載。しかし測定値[{', '.join([f'{m:.0f}' for m in measurements])}]から計算すると正解は{correct_min:.0f}μm。原本から引き継がれた転記ミス。",
                             "logic"
                         )
                 except:
